@@ -260,8 +260,9 @@ def mt_manager(path):
             name='MT-crawler', target=dir_crawler_mp, args=(q_dirs, q_files, q_dirs_2_del))
         q_dirs.put(path)
         dir_crawler.start()
+        dir_crawler.join()
 
-        workers = [dir_crawler]
+        workers = []
         for i in range(3):
             file_processor = Thread(name=f'MT-worker{i}', target=sort_files_mp, args=(
                 q_files, q_result, path, clean.FILE_TYPES))
@@ -322,8 +323,7 @@ def main():
 
     if not len(sys.argv) > 1:
         print(f'Usage: {sys.argv[0]} <path to dir>')
-        path = pathlib.Path("C:\\Users\\uacd0045\\Downloads\\test")
-        # sys.exit(1)
+        sys.exit(1)
     else:
         path = pathlib.Path(sys.argv[1])
 
