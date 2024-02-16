@@ -5,18 +5,14 @@ import sys
 import shutil
 import pathlib
 import clean
-from multiprocessing import JoinableQueue, Process, Manager, current_process
+from multiprocessing import JoinableQueue, Process, Manager
 
 logging.basicConfig(
     format='pid=%(process)d %(processName)s thread=%(threadName)s %(message)s',
     level=logging.DEBUG,
     handlers=[logging.StreamHandler()]
 )
-
 logger = logging.getLogger()
-# stream_handler = logging.StreamHandler()
-# logger.addHandler(stream_handler)
-# logger.setLevel(logging.DEBUG)
 
 q_dirs = JoinableQueue()
 q_dirs_2_del = JoinableQueue()

@@ -2,28 +2,29 @@ import logging
 from time import time
 from multiprocessing import Pool, current_process,  cpu_count
 
+logging.basicConfig(
+    format='pid=%(process)d %(processName)s thread=%(threadName)s %(message)s',
+    level=logging.DEBUG,
+    handlers=[logging.StreamHandler()]
+)
 logger = logging.getLogger()
-stream_handler = logging.StreamHandler()
-logger.addHandler(stream_handler)
-logger.setLevel(logging.DEBUG)
-
 
 def worker(x):
-    logger.debug(f"pid={current_process().pid} started, x={x}")
+    logger.debug(f"started, x={x}")
     y = [1]
     for i in range(2, x):
         if x % i == 0:
             y.append(i)
     if x!=1:
         y.append(x)
-    logger.debug(f"pid={current_process().pid} finished, len(y)={len(y)}")
+    logger.debug(f"finished, len(y)={len(y)}")
     return y
 
 
 def factorize(*number):
     start_time = time()
 
-    logger.debug(f'pid={current_process().pid} Main thread started.')
+    logger.debug('started.')
 
     
     cpus = cpu_count()
@@ -38,7 +39,7 @@ def factorize(*number):
         result = pool.map(worker, number)
     
     logger.debug(
-        f'pid={current_process().pid} Main thread finished after {time()-start_time} seconds')
+        f'finished after {time()-start_time} seconds')
 
     return result
 
