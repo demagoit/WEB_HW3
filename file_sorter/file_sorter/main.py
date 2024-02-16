@@ -7,10 +7,16 @@ import pathlib
 import clean
 from multiprocessing import JoinableQueue, Process, Manager, current_process
 
+logging.basicConfig(
+    format='pid=%(process)d %(processName)s thread=%(threadName)s %(message)s',
+    level=logging.DEBUG,
+    handlers=[logging.StreamHandler()]
+)
+
 logger = logging.getLogger()
-stream_handler = logging.StreamHandler()
-logger.addHandler(stream_handler)
-logger.setLevel(logging.DEBUG)
+# stream_handler = logging.StreamHandler()
+# logger.addHandler(stream_handler)
+# logger.setLevel(logging.DEBUG)
 
 q_dirs = JoinableQueue()
 q_dirs_2_del = JoinableQueue()
@@ -40,13 +46,11 @@ def dir_crawler_mp(q_dirs: JoinableQueue, q_files: JoinableQueue, q_dirs_2_del: 
     '''take start dir from $q_dirs and puts all found dirs to $q_dirs and $q_dirs_2_del,
     all found files puts to $q_files'''
 
-    logger.debug(
-        f"pid={current_process().pid} {current_process().name} dir_crawler started...")
+    logger.debug("dir_crawler started...")
 
     while not q_dirs.empty():
         work_dir = q_dirs.get()
-        logger.debug(
-            f"pid={current_process().pid} {current_process().name}, work_dir={work_dir}")
+        logger.debug(f"work_dir={work_dir}")
         try:
             for item in work_dir.iterdir():
                 if item.is_dir():
@@ -59,35 +63,31 @@ def dir_crawler_mp(q_dirs: JoinableQueue, q_files: JoinableQueue, q_dirs_2_del: 
 
         except PermissionError:
             # dirs_restricted.append(work_dir)
-            logger.debug(
-                f"pid={current_process().pid} {current_process().name} exception...")
+            logger.debug("PermissionError exception...")
 
     q_dirs.task_done()
-    logger.debug(
-        f"pid={current_process().pid} {current_process().name} dir_crawler finished")
+    logger.debug("dir_crawler finished")
     sys.exit(0)
+
 
 def dir_cleaner_mp(q_dirs: JoinableQueue):
     '''takes dir from $q_dirs and removes it'''
 
-    logger.debug(
-        f"pid={current_process().pid} {current_process().name} dir_cleaned started...")
+    logger.debug("dir_cleaned started...")
 
     while not q_dirs.empty():
         work_dir = q_dirs.get()
-        logger.debug(
-            f"pid={current_process().pid} {current_process().name}, work_dir={work_dir}")
+        logger.debug(f"work_dir={work_dir}")
         try:
             work_dir.rmdir()
             q_dirs.task_done()
         except PermissionError:
             # dirs_restricted.append(work_dir)
-            logger.debug(
-                f"pid={current_process().pid} {current_process().name} exception...")
+            logger.debug("PermissionError exception...")
             q_dirs.task_done()
-    logger.debug(
-        f"pid={current_process().pid} {current_process().name} dir_cleaner finished")
+    logger.debug("dir_cleaner finished")
     sys.exit(0)
+
 
 def copy_file_mp(category_name, path, file, files_found, to_norm=True, to_unpack=False):
     '''
@@ -116,6 +116,7 @@ def copy_file_mp(category_name, path, file, files_found, to_norm=True, to_unpack
 
     return files_found
 
+
 def move_file_mp(category_name, path, file, files_found, to_norm=True, to_unpack=False):
     '''
     move $file to subfolder $category_name in folder @path 
@@ -143,24 +144,22 @@ def move_file_mp(category_name, path, file, files_found, to_norm=True, to_unpack
 
     return files_found
 
+
 def sort_files_mp(q_files: JoinableQueue, q_result: JoinableQueue, target_dir, FILE_TYPES: dict):
     '''
     take file from $q_files, sort and moves files according FILE_TYPES table to folders in $target_dir
     calls $normalize() to all known file types
     unpack all archive files and normalize their content
     '''
-    logger.debug(
-        f"pid={current_process().pid} {current_process().name} sort_files started...")
+    logger.debug("sort_files started...")
 
     files_found = dict()
     known_types = set()
     unknown_types = set()
-    logger.debug(
-        f"pid={current_process().pid} {current_process().name} sort_files size={q_files.qsize()}")
+    logger.debug(f"sort_files size={q_files.qsize()}")
     while not q_files.empty():
         item = q_files.get()
-        logger.debug(
-            f'pid={current_process().pid} {current_process().name} file={item}')
+        logger.debug(f'file={item}')
 
         if item.is_file():
             file_type = item.suffix.lower()
@@ -171,7 +170,7 @@ def sort_files_mp(q_files: JoinableQueue, q_result: JoinableQueue, target_dir, F
                     if file_category == 'ARCHIVES':
                         pass
                         files_found = move_file_mp(file_category, target_dir, item,
-                                                      files_found, to_norm=True, to_unpack=True)
+                                                   files_found, to_norm=True, to_unpack=True)
                     else:
                         files_found = move_file_mp(file_category, target_dir,
                                                    item, files_found, to_norm=True)
@@ -189,15 +188,15 @@ def sort_files_mp(q_files: JoinableQueue, q_result: JoinableQueue, target_dir, F
 
     result = (files_found, known_types, unknown_types)
     q_result.put(result)
-    logger.debug(
-        f'pid={current_process().pid} {current_process().name} sort_files finished.')
+    logger.debug('sort_files finished.')
     sys.exit(0)
+
 
 def mp_manager(path):
     '''initiate and mamage Multiprocess workers'''
     start_time = time()
 
-    logger.debug(f'pid={current_process().pid} Main thread started.')
+    logger.debug('MP manager started.')
 
     with Manager() as mng:
         dir_crawler = Process(
@@ -213,47 +212,48 @@ def mp_manager(path):
             workers.append(file_processor)
 
         [file_processor.join() for file_processor in workers]
-    
-    dirs_2_remove = []
-    while not q_dirs_2_del.empty():
-        dirs_2_remove.append(q_dirs_2_del.get())
-        q_dirs_2_del.task_done()
-    
-    dirs_2_remove.reverse()
-    for item in dirs_2_remove:
-        q_dirs_2_del.put(item)
-    dir_cleaner = Process(
-        name='MP-cleaner', target=dir_cleaner_mp, args=(q_dirs_2_del,))
-    dir_cleaner.start()
-    dir_cleaner.join()
-    q_dirs_2_del.join()
 
-    files_found = dict()
-    known_types = set()
-    unknown_types = set()
+        dirs_2_remove = []
+        while not q_dirs_2_del.empty():
+            dirs_2_remove.append(q_dirs_2_del.get())
+            q_dirs_2_del.task_done()
 
-    while not q_result.empty():
-        fls, known, unknown = q_result.get()
+        dirs_2_remove.reverse()
+        for item in dirs_2_remove:
+            q_dirs_2_del.put(item)
+        dir_cleaner = Process(
+            name='MP-cleaner', target=dir_cleaner_mp, args=(q_dirs_2_del,))
+        dir_cleaner.start()
+        dir_cleaner.join()
+        q_dirs_2_del.join()
 
-        files_found.update(fls)
-        known_types.update(known)
-        unknown_types.update(unknown)
-        q_result.task_done()
+        files_found = dict()
+        known_types = set()
+        unknown_types = set()
 
-    q_dirs.join()
-    q_files.join()
-    q_result.join()
+        while not q_result.empty():
+            fls, known, unknown = q_result.get()
+
+            files_found.update(fls)
+            known_types.update(known)
+            unknown_types.update(unknown)
+            q_result.task_done()
+
+        q_dirs.join()
+        q_files.join()
+        q_result.join()
 
     logger.debug(
-        f'pid={current_process().pid} Main thread finished after {time()-start_time} seconds')
-    
+        f'MP manager finished after {time()-start_time} seconds')
+
     return files_found, known_types, unknown_types
+
 
 def mt_manager(path):
     '''initiate and mamage Multithread workers'''
     start_time = time()
 
-    logger.debug(f'pid={current_process().pid} Main thread started.')
+    logger.debug('MT manager started.')
 
     with Manager() as mng:
         dir_crawler = Thread(
@@ -271,53 +271,53 @@ def mt_manager(path):
 
         [file_processor.join() for file_processor in workers]
 
-    dirs_2_remove = []
-    while not q_dirs_2_del.empty():
-        dirs_2_remove.append(q_dirs_2_del.get())
-        q_dirs_2_del.task_done()
+        dirs_2_remove = []
+        while not q_dirs_2_del.empty():
+            dirs_2_remove.append(q_dirs_2_del.get())
+            q_dirs_2_del.task_done()
 
-    dirs_2_remove.reverse()
-    for item in dirs_2_remove:
-        q_dirs_2_del.put(item)
-    dir_cleaner = Thread(
-        name='MT-cleaner', target=dir_cleaner_mp, args=(q_dirs_2_del,))
-    dir_cleaner.start()
-    dir_cleaner.join()
-    q_dirs_2_del.join()
+        dirs_2_remove.reverse()
+        for item in dirs_2_remove:
+            q_dirs_2_del.put(item)
+        dir_cleaner = Thread(
+            name='MT-cleaner', target=dir_cleaner_mp, args=(q_dirs_2_del,))
+        dir_cleaner.start()
+        dir_cleaner.join()
+        q_dirs_2_del.join()
 
-    files_found = dict()
-    known_types = set()
-    unknown_types = set()
+        files_found = dict()
+        known_types = set()
+        unknown_types = set()
 
-    while not q_result.empty():
-        fls, known, unknown = q_result.get()
+        while not q_result.empty():
+            fls, known, unknown = q_result.get()
 
-        files_found.update(fls)
-        known_types.update(known)
-        unknown_types.update(unknown)
-        q_result.task_done()
+            files_found.update(fls)
+            known_types.update(known)
+            unknown_types.update(unknown)
+            q_result.task_done()
 
-    q_dirs.join()
-    q_files.join()
-    q_result.join()
+        q_dirs.join()
+        q_files.join()
+        q_result.join()
 
-    logger.debug(
-        f'pid={current_process().pid} Main thread finished after {time()-start_time} seconds')
+    logger.debug(f'MT manager finished after {time()-start_time} seconds')
 
     return files_found, known_types, unknown_types
+
 
 def rec_manager(path):
     '''calls recursive function from clean.py'''
     start_time = time()
 
-    logger.debug(f'pid={current_process().pid} Main thread started.')
+    logger.debug('Recursion manager started.')
 
     files_found, known_types, unknown_types = clean.sort_files(path, path)
 
-    logger.debug(
-        f'pid={current_process().pid} Main thread finished after {time()-start_time} seconds')
+    logger.debug(f'Recursion manager finished after {time()-start_time} seconds')
 
     return files_found, known_types, unknown_types
+
 
 def main():
 
@@ -350,7 +350,6 @@ def main():
         files_found, known_types, unknown_types = rec_manager(path)
     else:
         print("Wrong number.")
-
 
     # for category, files in files_found.items():
     #     print(f'Category {category} includes:\n{files}')
